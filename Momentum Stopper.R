@@ -1,23 +1,27 @@
 library(dplyr)
 library(readxl)
 library(rstan)
+library(baseballr)
 
-# Dataset and Filter
-fangraphs_data <- read_excel(("C:/Users/weber/OneDrive/Desktop/Baseball/Weber Final Project/Fangraphs Data Weber.xlsx"))
+fangraphs_data <- fg_pitcher_leaders(startseason = "2024", endseason = "2024")
+fangraphs_data <- fangraphs_data %>%
+  mutate(`FIP-` = as.numeric(`FIP-`)) %>%
+  rename(FIP_minus = `FIP-`)
+
 fangraphs_data <- fangraphs_data %>%
   mutate(GR = G - GS) %>%
   mutate(FIP_plus = (-(FIP_minus - 100)) + 100)
 
-fangraphs_data_2023 <- fangraphs_data %>%
-  filter(Season == "2023") %>%
+fangraphs_data_2024 <- fangraphs_data %>%
+  filter(Season == "2024") %>%
   filter(GR >= 35)
 
-fangraphs_data_2023$Momentum_Stopper <- NA
+fangraphs_data_2024$Momentum_Stopper <- NA
 
-fangraphs_data_2023$Soft_pct <- as.numeric(fangraphs_data_2023$Soft_pct)
-fangraphs_data_2023$K_pct <- as.numeric(fangraphs_data_2023$K_pct)
-fangraphs_data_2023$LOB_pct <- as.numeric(fangraphs_data_2023$LOB_pct)
-fangraphs_data_2023$FIP_plus <- as.numeric(fangraphs_data_2023$FIP_plus)
+fangraphs_data_2024$Soft_pct <- as.numeric(fangraphs_data_2024$Soft_pct)
+fangraphs_data_2024$K_pct <- as.numeric(fangraphs_data_2024$K_pct)
+fangraphs_data_2024$LOB_pct <- as.numeric(fangraphs_data_2024$LOB_pct)
+fangraphs_data_2024$FIP_plus <- as.numeric(fangraphs_data_2024$FIP_plus)
 
 # Define the Bayesian model using Stan language
 stan_code <- "
@@ -58,11 +62,11 @@ stan_model <- stan_model(model_code = stan_code)
 
 # Prepare the data
 stan_data <- list(
-  N = nrow(fangraphs_data_2023),
-  K_pct = fangraphs_data_2023$K_pct,
-  Soft_pct = fangraphs_data_2023$Soft_pct,
-  LOB_pct = fangraphs_data_2023$LOB_pct,
-  FIP_plus = fangraphs_data_2023$FIP_plus
+  N = nrow(fangraphs_data_2024),
+  K_pct = fangraphs_data_2024$K_pct,
+  Soft_pct = fangraphs_data_2024$Soft_pct,
+  LOB_pct = fangraphs_data_2024$LOB_pct,
+  FIP_plus = fangraphs_data_2024$FIP_plus
 )
 
 # Perform Bayesian inference (sampling)
@@ -73,7 +77,7 @@ print(bayesian_fit)
 
 
 # Initialize predictions vector
-predictions <- numeric(nrow(fangraphs_data_2023))
+predictions <- numeric(nrow(fangraphs_data_2024))
 
 # Extract posterior samples
 posterior_samples <- extract(bayesian_fit)
@@ -85,23 +89,23 @@ beta_Soft_mean <- mean(posterior_samples$beta_Soft)
 beta_LOB_mean <- mean(posterior_samples$beta_LOB)
 beta_FIP_plus_mean <- mean(posterior_samples$beta_FIP_plus)
 
-# Iterate over each row of fangraphs_data_2023
-for (i in 1:nrow(fangraphs_data_2023)) {
+# Iterate over each row of fangraphs_data_2024
+for (i in 1:nrow(fangraphs_data_2024)) {
   # Calculate prediction for the i-th player using the mean of posterior samples
   predictions[i] <- rnorm(1, 
                           mean = alpha_mean + 
-                            beta_K_mean * fangraphs_data_2023$K_pct[i] + 
-                            beta_Soft_mean * fangraphs_data_2023$Soft_pct[i] +
-                            beta_LOB_mean * fangraphs_data_2023$LOB_pct[i] +
-                            beta_FIP_plus_mean * fangraphs_data_2023$FIP_plus[i],
+                            beta_K_mean * fangraphs_data_2024$K_pct[i] + 
+                            beta_Soft_mean * fangraphs_data_2024$Soft_pct[i] +
+                            beta_LOB_mean * fangraphs_data_2024$LOB_pct[i] +
+                            beta_FIP_plus_mean * fangraphs_data_2024$FIP_plus[i],
                           sd = 1)  # Assuming standard deviation of 1
 }
 
 # Add predictions to the dataframe
-fangraphs_data_2023$Momentum_Stopper_prediction <- predictions
+fangraphs_data_2024$Momentum_Stopper_prediction <- predictions
 
 # View the dataframe with predictions
-head(fangraphs_data_2023)
+head(fangraphs_data_2024)
 
 # Perform Bayesian inference (sampling) again
 bayesian_fit <- sampling(stan_model, data = stan_data)
@@ -110,9 +114,8 @@ bayesian_fit <- sampling(stan_model, data = stan_data)
 print(bayesian_fit)
 
 # Select the desired columns
-predictions_subset_momentum <- fangraphs_data_2023 %>%
-  select(NameASCII, Momentum_Stopper_prediction)
+predictions_subset_momentum <- fangraphs_data_2024 %>%
+  select(PlayerName, Momentum_Stopper_prediction)
 
 # View the resulting dataframe
 head(predictions_subset_momentum)
-
